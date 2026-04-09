@@ -3,6 +3,7 @@ import { Game } from '@shared/types/league-client/match-history'
 import { RankedStats } from '@shared/types/league-client/ranked'
 import { SummonerInfo } from '@shared/types/league-client/summoner'
 import {
+  ChampSelectPrediction,
   MatchHistoryGamesAnalysisAll,
   MatchHistoryGamesAnalysisTeamSide
 } from '@shared/utils/analysis'
@@ -185,6 +186,8 @@ export const useOngoingGameStore = defineStore('shard:ongoing-game-renderer', ()
     teams: Record<string, MatchHistoryGamesAnalysisTeamSide>
   } | null>(null)
 
+  const champSelectPrediction = shallowRef<ChampSelectPrediction | null>(null)
+
   const matchHistoryTag = shallowRef<string | null>(null)
 
   const matchHistory = ref<Record<string, MatchHistoryPlayer>>({})
@@ -216,6 +219,7 @@ export const useOngoingGameStore = defineStore('shard:ongoing-game-renderer', ()
     isInEog,
     inferredPremadeTeams,
     playerStats,
+    champSelectPrediction,
     matchHistoryTag,
 
     matchHistory,

@@ -3,6 +3,7 @@ import { Game, GameTimeline } from '@shared/types/league-client/match-history'
 import { RankedStats } from '@shared/types/league-client/ranked'
 import { SummonerInfo } from '@shared/types/league-client/summoner'
 import {
+  ChampSelectPrediction,
   MatchHistoryGamesAnalysisAll,
   MatchHistoryGamesAnalysisTeamSide
 } from '@shared/utils/analysis'
@@ -402,6 +403,15 @@ export class OngoingGameState {
   }
 
   /**
+   * 选人阶段双方预测胜率
+   */
+  champSelectPrediction: ChampSelectPrediction | null = null
+
+  setChampSelectPrediction(value: ChampSelectPrediction | null) {
+    this.champSelectPrediction = value
+  }
+
+  /**
    * 战绩列表的 tag, 用于 SGP API
    */
   matchHistoryTag: string = 'all'
@@ -534,6 +544,7 @@ export class OngoingGameState {
 
   clear() {
     this.playerStats = null
+    this.champSelectPrediction = null
     this.inferredPremadeTeams = {}
     this.matchHistory = {}
     this.summoner = {}
@@ -575,6 +586,7 @@ export class OngoingGameState {
       teams: computed.struct,
       inferredPremadeTeams: observable.struct,
       playerStats: observable.struct,
+      champSelectPrediction: observable.struct,
       queryStage: computed.struct,
       teamParticipantGroups: computed.struct
     })

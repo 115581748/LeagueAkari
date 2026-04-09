@@ -6,7 +6,8 @@ import {
   MatchHistoryGamesAnalysisAll,
   MatchHistoryGamesAnalysisTeamSide,
   analyzeMatchHistory,
-  analyzeTeamMatchHistory
+  analyzeTeamMatchHistory,
+  calcChampSelectPrediction
 } from '@shared/utils/analysis'
 import { calculateTogetherTimes, removeOverlappingSubsets } from '@shared/utils/team-up-calc'
 import { isAxiosError } from 'axios'
@@ -141,6 +142,7 @@ export class OngoingGameMain implements IAkariShardInitDispose {
       'gameInfo',
       'positionAssignments',
       'playerStats',
+      'champSelectPrediction',
       'inferredPremadeTeams',
       'queryStage',
       'teams',
@@ -1110,6 +1112,70 @@ export class OngoingGameMain implements IAkariShardInitDispose {
       { delay: 200, equals: comparer.shallow }
     )
 
+    // 重新计算选人阶段预测胜率（战绩、段位、英雄选择或位置变化时重算）
+    this._mobx.reaction(
+      () => [
+        this.state.playerStats,
+        this.state.rankedStats,
+        this.state.championSelections,
+        this.state.positionAssignments,
+        this.state.teams,
+        this.state.queryStage.phase
+      ] as const,
+      ([stats, rankedStats, selections, positions, teams, phase]) => {
+        if (phase !== 'champ-select' || !stats || !teams) {
+          this.state.setChampSelectPrediction(null)
+          return
+        }
+
+        const uniqueOur = [
+          ...new Set(
+            Object.entries(teams)
+              .filter(([k]) => k.startsWith('our'))
+              .flatMap(([, v]) => v)
+          )
+        ]
+        const uniqueTheir = [
+          ...new Set(
+            Object.entries(teams)
+              .filter(([k]) => k.startsWith('their'))
+              .flatMap(([, v]) => v)
+          )
+        ]
+
+        if (uniqueOur.length === 0 && uniqueTheir.length === 0) {
+          this.state.setChampSelectPrediction(null)
+          return
+        }
+
+        // 从 rankedStats 提取赛季整体胜率：SOLO > FLEX > 0.5
+        const overallWinRates: Record<string, number> = {}
+        for (const [puuid, entry] of Object.entries(rankedStats)) {
+          const ranked = entry?.data
+          if (!ranked) continue
+          const solo = ranked.queueMap?.RANKED_SOLO_5x5
+          const flex = ranked.queueMap?.RANKED_FLEX_SR
+          if (solo && solo.wins + solo.losses > 0) {
+            overallWinRates[puuid] = solo.wins / (solo.wins + solo.losses)
+          } else if (flex && flex.wins + flex.losses > 0) {
+            overallWinRates[puuid] = flex.wins / (flex.wins + flex.losses)
+          }
+          // 否则不设置，函数内部默认 0.5
+        }
+
+        const prediction = calcChampSelectPrediction(
+          stats.players,
+          overallWinRates,
+          selections,
+          Object.fromEntries(Object.entries(positions).map(([k, v]) => [k, v.position])),
+          uniqueOur,
+          uniqueTheir
+        )
+        this.state.setChampSelectPrediction(prediction)
+      },
+      { delay: 200, equals: comparer.shallow }
+    )
+
     // 重新计算预组队
     this._mobx.reaction(
       () => [Object.values(this.state.matchHistory), this.settings.premadeTeamThreshold] as const,
@@ -1246,7 +1312,7 @@ export class OngoingGameMain implements IAkariShardInitDispose {
               `[${i18next.t('ongoing-game-main.taggedPlayer')}: ${player.name}]: \n${player.tag}`,
               'celebration'
             )
-            .catch(() => {})
+            .catch(() => { })
           reminded.push(player.puuid)
         }
       }

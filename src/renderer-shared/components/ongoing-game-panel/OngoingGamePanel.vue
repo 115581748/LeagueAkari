@@ -43,16 +43,35 @@
         </div>
       </div>
     </DefineOngoingTeam>
-    <NScrollbar v-if="!isInIdleState && ogs.settings.enabled" x-scrollable>
-      <div class="inner-container" :class="{ 'fit-content': columnsNeed >= 4 }">
-        <OngoingTeam
-          v-for="(players, team) of sortedTeams"
-          :team="team"
-          :key="team"
-          :players="players"
+    <div
+      v-if="ogs.queryStage?.phase === 'champ-select' && ogs.champSelectPrediction"
+      class="champ-select-prediction"
+    >
+      <div class="prediction-label our">
+        {{ (ogs.champSelectPrediction.our * 100).toFixed(1) }}%
+      </div>
+      <div class="prediction-bar-track">
+        <div
+          class="prediction-bar-fill our"
+          :style="{ width: (ogs.champSelectPrediction.our * 100).toFixed(1) + '%' }"
         />
       </div>
-    </NScrollbar>
+      <div class="prediction-label their">
+        {{ (ogs.champSelectPrediction.their * 100).toFixed(1) }}%
+      </div>
+    </div>
+    <div v-if="!isInIdleState && ogs.settings.enabled" class="scrollbar-wrapper">
+      <NScrollbar x-scrollable>
+        <div class="inner-container" :class="{ 'fit-content': columnsNeed >= 4 }">
+          <OngoingTeam
+            v-for="(players, team) of sortedTeams"
+            :team="team"
+            :key="team"
+            :players="players"
+          />
+        </div>
+      </NScrollbar>
+    </div>
     <div v-else class="no-ongoing-game">
       <div class="centered">
         <LeagueAkariSpan bold class="akari-text" />
@@ -384,6 +403,13 @@ const columnsNeed = computed(() => {
 <style lang="less" scoped>
 .ongoing-game-view {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.scrollbar-wrapper {
+  flex: 1;
+  min-height: 0;
 }
 
 .inner-container {
@@ -447,7 +473,8 @@ const columnsNeed = computed(() => {
 }
 
 .no-ongoing-game {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   position: relative;
 
@@ -504,6 +531,47 @@ const columnsNeed = computed(() => {
   .no-ongoing-game {
     .no-ongoing-game-text {
       color: rgba(0, 0, 0, 0.4);
+    }
+  }
+}
+
+.champ-select-prediction {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  gap: 8px;
+  flex-shrink: 0;
+
+  .prediction-label {
+    font-size: 13px;
+    font-weight: bold;
+    min-width: 46px;
+    text-align: center;
+
+    &.our {
+      color: #5b9cf6;
+    }
+
+    &.their {
+      color: #f56c6c;
+    }
+  }
+
+  .prediction-bar-track {
+    flex: 1;
+    height: 8px;
+    border-radius: 4px;
+    background-color: rgba(245, 108, 108, 0.35);
+    overflow: hidden;
+
+    .prediction-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+
+      &.our {
+        background-color: #5b9cf6;
+      }
     }
   }
 }

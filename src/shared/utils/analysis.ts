@@ -265,6 +265,12 @@ export interface MatchHistoryChampionAnalysis {
   }
 }
 
+export interface MatchHistoryChampionPositionStat {
+  count: number
+  win: number
+  winRate: number
+}
+
 export interface MatchHistoryChampionPositionAnalysis {
   /**
    * 提供了位置信息的比赛数量
@@ -272,11 +278,11 @@ export interface MatchHistoryChampionPositionAnalysis {
   total: number
 
   positions: {
-    TOP: number
-    JUNGLE: number
-    MIDDLE: number
-    BOTTOM: number
-    UTILITY: number
+    TOP: MatchHistoryChampionPositionStat
+    JUNGLE: MatchHistoryChampionPositionStat
+    MIDDLE: MatchHistoryChampionPositionStat
+    BOTTOM: MatchHistoryChampionPositionStat
+    UTILITY: MatchHistoryChampionPositionStat
   }
 }
 
@@ -840,7 +846,7 @@ export function analyzeMatchHistory(
   let totalEnemyMissingPings: number | null = 0
 
   let positionCount = 0
-  const positions: Record<string, number> = {}
+  const positions: Record<string, { count: number; win: number }> = {}
 
   for (const [_gameId, analysis] of gameAnalyses) {
     totalDamageShareToTop += analysis.damageShareToTop
@@ -892,7 +898,13 @@ export function analyzeMatchHistory(
 
     if (analysis.position) {
       positionCount++
-      positions[analysis.position] = (positions[analysis.position] || 0) + 1
+      if (!positions[analysis.position]) {
+        positions[analysis.position] = { count: 0, win: 0 }
+      }
+      positions[analysis.position].count++
+      if (analysis.win) {
+        positions[analysis.position].win++
+      }
     }
 
     if (analysis.flashSlot === 'D') {
@@ -981,6 +993,12 @@ export function analyzeMatchHistory(
     summary.averageEnemyMissingPings = totalEnemyMissingPings / (gameAnalyses.length || 1)
   }
 
+  const makePositionStat = (p?: { count: number; win: number }): MatchHistoryChampionPositionStat => ({
+    count: p?.count ?? 0,
+    win: p?.win ?? 0,
+    winRate: p ? p.win / p.count : 0
+  })
+
   return {
     games: gamesAnalysisMap,
     summary: summary,
@@ -988,11 +1006,11 @@ export function analyzeMatchHistory(
     positions: {
       total: positionCount,
       positions: {
-        TOP: positions.TOP || 0,
-        JUNGLE: positions.JUNGLE || 0,
-        MIDDLE: positions.MIDDLE || 0,
-        BOTTOM: positions.BOTTOM || 0,
-        UTILITY: positions.UTILITY || 0
+        TOP: makePositionStat(positions.TOP),
+        JUNGLE: makePositionStat(positions.JUNGLE),
+        MIDDLE: makePositionStat(positions.MIDDLE),
+        BOTTOM: makePositionStat(positions.BOTTOM),
+        UTILITY: makePositionStat(positions.UTILITY)
       }
     },
     akariScore: calculateAkariScore({ games: gamesAnalysisMap, summary, champions })
@@ -1295,4 +1313,134 @@ function standardize(numbers: number[]): number[] {
 
   // 标准化计算
   return numbers.map((num) => (num - min) / range)
+}
+
+const CHAMP_SELECT_MIN_SAMPLE = 20
+
+export interface ChampSelectPlayerPrediction {
+  overallWinRate: number
+  championWinRate: number
+  positionWinRate: number
+  champGamesPlayed: number
+  positionGamesPlayed: number
+  personalScore: number
+}
+
+export interface ChampSelectPrediction {
+  /**
+   * 我方预测胜率 (0~1)
+   */
+  our: number
+  /**
+   * 对方预测胜率 (0~1)
+   */
+  their: number
+  ourPlayers: Record<string, ChampSelectPlayerPrediction>
+  theirPlayers: Record<string, ChampSelectPlayerPrediction>
+}
+
+/**
+ * 根据选人数据计算双方预测胜率
+ *
+ * 公式参考 IEEE 论文权重：
+ *   个人预期胜率 = 整体胜率×0.25 + 位置胜率×0.35 + 单英雄胜率×0.40
+ *
+ * 置信度规则：样本 < 20 局时，对应变量回退到整体胜率，避免小样本噪音。
+ *
+ * @param playerStats puuid → 对局分析结果（来自 analyzeMatchHistory）
+ * @param overallWinRates puuid → 赛季整体胜率（由调用方从 rankedStats 提取）
+ * @param championSelections puuid → 所选英雄ID
+ * @param positionAssignments puuid → 分配位置（如 "TOP"、"JUNGLE"）
+ * @param ourPuuids 我方玩家 puuid 列表
+ * @param theirPuuids 对方玩家 puuid 列表
+ */
+export function calcChampSelectPrediction(
+  playerStats: Record<string, MatchHistoryGamesAnalysisAll>,
+  overallWinRates: Record<string, number>,
+  championSelections: Record<string, number>,
+  positionAssignments: Record<string, string>,
+  ourPuuids: string[],
+  theirPuuids: string[]
+): ChampSelectPrediction {
+  const calcPlayerScore = (
+    puuid: string
+  ): { score: number; detail: ChampSelectPlayerPrediction } => {
+    const analysis = playerStats[puuid]
+    const championId = championSelections[puuid]
+    const position = positionAssignments[puuid]?.toUpperCase()
+
+    // 整体胜率：优先取 rankedStats 赛季数据，无则回退 0.5
+    const overallWinRate = overallWinRates[puuid] ?? 0.5
+
+    let championWinRate = overallWinRate
+    let positionWinRate = overallWinRate
+    let champGamesPlayed = 0
+    let positionGamesPlayed = 0
+
+    if (analysis) {
+      // 单英雄胜率：样本不足时用整体胜率填充
+      if (championId && analysis.champions[championId]) {
+        const champData = analysis.champions[championId]
+        champGamesPlayed = champData.count
+        championWinRate =
+          champData.count >= CHAMP_SELECT_MIN_SAMPLE ? champData.winRate : overallWinRate
+      }
+
+      // 位置胜率：样本不足时用整体胜率填充
+      if (position && analysis.positions) {
+        const posStat = (
+          analysis.positions.positions as Record<string, MatchHistoryChampionPositionStat>
+        )[position]
+        if (posStat) {
+          positionGamesPlayed = posStat.count
+          positionWinRate =
+            posStat.count >= CHAMP_SELECT_MIN_SAMPLE ? posStat.winRate : overallWinRate
+        }
+      }
+    }
+
+    // 个人预期胜率 = 整体×0.25 + 位置×0.35 + 单英雄×0.40
+    const personalScore = overallWinRate * 0.25 + positionWinRate * 0.35 + championWinRate * 0.40
+
+    return {
+      score: personalScore,
+      detail: {
+        overallWinRate,
+        championWinRate,
+        positionWinRate,
+        champGamesPlayed,
+        positionGamesPlayed,
+        personalScore
+      }
+    }
+  }
+
+  const ourPlayers: Record<string, ChampSelectPlayerPrediction> = {}
+  const theirPlayers: Record<string, ChampSelectPlayerPrediction> = {}
+
+  let ourTotal = 0
+  let theirTotal = 0
+
+  for (const puuid of ourPuuids) {
+    const { score, detail } = calcPlayerScore(puuid)
+    ourPlayers[puuid] = detail
+    ourTotal += score
+  }
+
+  for (const puuid of theirPuuids) {
+    const { score, detail } = calcPlayerScore(puuid)
+    theirPlayers[puuid] = detail
+    theirTotal += score
+  }
+
+  const ourAvg = ourPuuids.length > 0 ? ourTotal / ourPuuids.length : 0.5
+  const theirAvg = theirPuuids.length > 0 ? theirTotal / theirPuuids.length : 0.5
+  const total = ourAvg + theirAvg || 1
+
+  return {
+    our: ourAvg / total,
+    their: theirAvg / total,
+    ourPlayers,
+    theirPlayers
+  }
 }

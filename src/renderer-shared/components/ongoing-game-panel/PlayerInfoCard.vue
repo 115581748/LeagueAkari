@@ -553,7 +553,7 @@ const positionInfo = computed(() => {
 
   if (analysis?.positions) {
     const recentPositions = Object.entries(analysis.positions.positions)
-      .map(([position, count]) => ({ position, count }))
+      .map(([position, data]) => ({ position, count: data.count }))
       .filter((p) => p.position !== 'NONE' && p.count > 0)
       .toSorted((a, b) => b.count - a.count)
 
