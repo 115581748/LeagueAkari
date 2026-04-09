@@ -124,73 +124,82 @@
       </div>
     </div>
     <div class="stats">
-      <template v-if="queueType === 'CHERRY'">
-        <NPopover :keep-alive-on-hover="false" :disabled="!analysis" :delay="50">
-          <template #trigger>
-            <div
-              class="win-rate-cherry"
-              :class="{
-                good: analysis.summary.winRate >= 0.53,
-                normal: analysis.summary.winRate > 0.47 && analysis.summary.winRate < 0.53,
-                bad: analysis.summary.winRate <= 0.47
-              }"
-              :title="`${t('PlayerInfoCard.top4Rate')} & ${t('PlayerInfoCard.1stRate')}`"
-              v-if="analysis"
-            >
-              {{ (analysis.summary.winRate * 100).toFixed() }} %
-              <span class="top1-rate"
-                >/
-                {{
-                  t('PlayerInfoCard.1st', {
-                    rate: (analysis.summary.cherry.top1Rate * 100).toFixed()
-                  })
-                }}</span
+      <div class="win-rate-block">
+        <template v-if="queueType === 'CHERRY'">
+          <NPopover :keep-alive-on-hover="false" :disabled="!analysis" :delay="50">
+            <template #trigger>
+              <div
+                class="win-rate-cherry"
+                :class="{
+                  good: analysis.summary.winRate >= 0.53,
+                  normal: analysis.summary.winRate > 0.47 && analysis.summary.winRate < 0.53,
+                  bad: analysis.summary.winRate <= 0.47
+                }"
+                :title="`${t('PlayerInfoCard.top4Rate')} & ${t('PlayerInfoCard.1stRate')}`"
+                v-if="analysis"
               >
-              <span class="game-count">({{ analysis.summary.count }})</span>
+                {{ (analysis.summary.winRate * 100).toFixed() }} %
+                <span class="top1-rate"
+                  >/
+                  {{
+                    t('PlayerInfoCard.1st', {
+                      rate: (analysis.summary.cherry.top1Rate * 100).toFixed()
+                    })
+                  }}</span
+                >
+                <span class="game-count">({{ analysis.summary.count }})</span>
+              </div>
+              <div v-else class="win-rate">— %</div>
+            </template>
+            <div class="popover-text" v-if="analysis">
+              {{
+                t('PlayerInfoCard.cherryWinRatePopover', {
+                  countV: analysis.summary.count,
+                  winRate: (analysis.summary.winRate * 100).toFixed(2),
+                  cherryCount: analysis.summary.cherry.count,
+                  top1Rate: (analysis.summary.cherry.top1Rate * 100).toFixed(2)
+                })
+              }}
             </div>
-            <div v-else class="win-rate">— %</div>
-          </template>
-          <div class="popover-text" v-if="analysis">
-            {{
-              t('PlayerInfoCard.cherryWinRatePopover', {
-                countV: analysis.summary.count,
-                winRate: (analysis.summary.winRate * 100).toFixed(2),
-                cherryCount: analysis.summary.cherry.count,
-                top1Rate: (analysis.summary.cherry.top1Rate * 100).toFixed(2)
-              })
-            }}
-          </div>
-        </NPopover>
-      </template>
-      <template v-else>
-        <NPopover :keep-alive-on-hover="false" :disabled="!analysis">
-          <template #trigger>
-            <div
-              v-if="analysis"
-              class="win-rate"
-              :class="{
-                good: analysis.summary.winRate >= 0.53,
-                normal: analysis.summary.winRate > 0.47 && analysis.summary.winRate < 0.53,
-                bad: analysis.summary.winRate <= 0.47
-              }"
-            >
-              {{ (analysis.summary.winRate * 100).toFixed() }}%
-              <span class="game-count">({{ analysis.summary.count }})</span>
+          </NPopover>
+        </template>
+        <template v-else>
+          <NPopover :keep-alive-on-hover="false" :disabled="!analysis">
+            <template #trigger>
+              <div
+                v-if="analysis"
+                class="win-rate"
+                :class="{
+                  good: analysis.summary.winRate >= 0.53,
+                  normal: analysis.summary.winRate > 0.47 && analysis.summary.winRate < 0.53,
+                  bad: analysis.summary.winRate <= 0.47
+                }"
+              >
+                {{ (analysis.summary.winRate * 100).toFixed() }}%
+                <span class="game-count">({{ analysis.summary.count }})</span>
+              </div>
+              <div class="win-rate" v-else>— %</div>
+            </template>
+            <div class="popover-text" v-if="analysis">
+              {{
+                t('PlayerInfoCard.winRatePopover', {
+                  countV: analysis.summary.count,
+                  winRate: (analysis.summary.winRate * 100).toFixed(),
+                  wins: analysis.summary.win,
+                  losses: analysis.summary.lose
+                })
+              }}
             </div>
-            <div class="win-rate" v-else>— %</div>
-          </template>
-          <div class="popover-text" v-if="analysis">
-            {{
-              t('PlayerInfoCard.winRatePopover', {
-                countV: analysis.summary.count,
-                winRate: (analysis.summary.winRate * 100).toFixed(),
-                wins: analysis.summary.win,
-                losses: analysis.summary.lose
-              })
-            }}
-          </div>
-        </NPopover>
-      </template>
+          </NPopover>
+        </template>
+        <div class="prediction-rates" v-if="champSelectPlayerPrediction">
+          整体 {{ formatRate(champSelectPlayerPrediction.overallWinRate) }}% | 位置
+          {{ formatRate(champSelectPlayerPrediction.positionWinRate) }}% | 英雄
+          {{ formatRate(champSelectPlayerPrediction.championWinRate) }}%({{
+            champSelectPlayerPrediction.champGamesPlayed
+          }}场)
+        </div>
+      </div>
       <NPopover :keep-alive-on-hover="false" :disabled="!analysis" :delay="50">
         <template #trigger>
           <div
@@ -448,6 +457,7 @@ import { Game } from '@shared/types/league-client/match-history'
 import { RankedStats } from '@shared/types/league-client/ranked'
 import { SummonerInfo } from '@shared/types/league-client/summoner'
 import {
+  ChampSelectPlayerPrediction,
   MatchHistoryGameWithState,
   MatchHistoryGamesAnalysisAll,
   SelfParticipantGame,
@@ -536,6 +546,22 @@ onDeactivated(() => {
 
 const lcs = useLeagueClientStore()
 const as = useAppCommonStore()
+
+const champSelectPlayerPrediction = computed<ChampSelectPlayerPrediction | null>(() => {
+  if (!ogs.champSelectPrediction) {
+    return null
+  }
+
+  return (
+    ogs.champSelectPrediction.ourPlayers[puuid] ||
+    ogs.champSelectPrediction.theirPlayers[puuid] ||
+    null
+  )
+})
+
+const formatRate = (rate: number) => {
+  return (rate * 100).toFixed(0)
+}
 
 const positionInfo = computed(() => {
   const info = {
@@ -974,6 +1000,21 @@ const { name } = useChampionInfo()
   align-items: center;
   margin-bottom: 4px;
 
+  .win-rate-block {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    align-items: center;
+
+    .prediction-rates {
+      margin-top: 2px;
+      font-size: 10px;
+      color: #aaaaaa;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+  }
+
   .position-info {
     display: flex;
     gap: 2px;
@@ -998,14 +1039,14 @@ const { name } = useChampionInfo()
     font-size: 13px;
     font-weight: bold;
     text-align: center;
-    flex: 1;
+    width: 100%;
   }
 
   .win-rate-cherry {
     font-size: 13px;
     font-weight: bold;
     text-align: center;
-    flex: 1;
+    width: 100%;
 
     .top1-rate {
       font-size: 11px;
