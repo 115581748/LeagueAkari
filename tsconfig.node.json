@@ -9,13 +9,22 @@
   ],
   "compilerOptions": {
     "target": "ESNext",
-    "lib": ["ESNext"],
+    "lib": [
+      "ESNext"
+    ],
     "composite": true,
-    "types": ["electron-vite/node", "@modyfi/vite-plugin-yaml/modules"],
+    "types": [
+      "electron-vite/node",
+      "@modyfi/vite-plugin-yaml/modules"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"],
-      "@main/*": ["src/main/*"]
+      "@shared/*": [
+        "src/shared/*"
+      ],
+      "@main/*": [
+        "src/main/*"
+      ]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,
